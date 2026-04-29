@@ -111,6 +111,7 @@ const el = {
   dayCopy: document.querySelector("#day-copy"),
   nightTemp: document.querySelector("#night-temp"),
   nightCopy: document.querySelector("#night-copy"),
+  refreshButton: document.querySelector("#refresh-button"),
   shareButton: document.querySelector("#share-button"),
   preferenceButtons: [...document.querySelectorAll("[data-preference]")]
 };
@@ -183,9 +184,26 @@ init();
 
 async function init() {
   setupPreference();
+  setupRefresh();
   const data = await fetchWeather();
   latestWeatherData = data;
   render(data);
+}
+
+async function refreshWeather() {
+  if (!el.refreshButton) return;
+  el.refreshButton.disabled = true;
+  el.refreshButton.classList.add("is-loading");
+  el.updated.textContent = "更新中...";
+
+  try {
+    const data = await fetchWeather();
+    latestWeatherData = data;
+    render(data);
+  } finally {
+    el.refreshButton.disabled = false;
+    el.refreshButton.classList.remove("is-loading");
+  }
 }
 
 async function fetchWeather() {
@@ -373,6 +391,12 @@ function setupPreference() {
       if (latestWeatherData) render(latestWeatherData);
     });
   });
+}
+
+function setupRefresh() {
+  if (!el.refreshButton || el.refreshButton.dataset.bound === "true") return;
+  el.refreshButton.dataset.bound = "true";
+  el.refreshButton.addEventListener("click", refreshWeather);
 }
 
 function getPreference() {

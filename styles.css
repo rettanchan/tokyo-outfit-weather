@@ -68,6 +68,12 @@ button {
   gap: 16px;
 }
 
+.top-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
 .eyebrow,
 .date,
 footer p {
@@ -121,6 +127,20 @@ p {
   border-radius: 50%;
   color: var(--ink);
   background: rgba(255, 255, 255, 0.72);
+}
+
+.icon-button:disabled {
+  opacity: 0.65;
+}
+
+.icon-button.is-loading span {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .sky {
