@@ -4,6 +4,15 @@ const TOKYO = {
   timezone: "Asia/Tokyo"
 };
 
+const PREFERENCE_KEY = "tokyo-outfit-preference";
+const preferences = {
+  hot: { label: "暑がり", offset: 2 },
+  normal: { label: "普通", offset: 0 },
+  cold: { label: "寒がり", offset: -2 }
+};
+
+let latestWeatherData = null;
+
 const PRIMARY_API_URL = buildWeatherUrl("https://api.open-meteo.com/v1/jma", {
   current: [
     "temperature_2m",
@@ -102,7 +111,8 @@ const el = {
   dayCopy: document.querySelector("#day-copy"),
   nightTemp: document.querySelector("#night-temp"),
   nightCopy: document.querySelector("#night-copy"),
-  shareButton: document.querySelector("#share-button")
+  shareButton: document.querySelector("#share-button"),
+  preferenceButtons: [...document.querySelectorAll("[data-preference]")]
 };
 
 const weatherText = {
@@ -172,7 +182,9 @@ if ("serviceWorker" in navigator) {
 init();
 
 async function init() {
+  setupPreference();
   const data = await fetchWeather();
+  latestWeatherData = data;
   render(data);
 }
 
@@ -221,9 +233,12 @@ function render(data) {
   const now = new Date(current.time || Date.now());
   const feels = round(current.apparent_temperature ?? current.temperature_2m);
   const temp = round(current.temperature_2m ?? feels);
+  const preference = getPreference();
   const condition = weatherText[current.weather_code] || weatherText[daily.code] || "天気";
   const outfit = getOutfit({
-    temp: feels,
+    temp: feels + preferences[preference].offset,
+    actualFeels: feels,
+    preference,
     max: daily.max,
     min: daily.min,
     rainProbability: daily.rainProbability,
@@ -250,7 +265,7 @@ function render(data) {
 
   el.sky.dataset.weather = getSkyType(current.weather_code ?? daily.code, current.is_day);
 
-  renderTimeline(hours, daily);
+  renderTimeline(hours, daily, preferences[preference].offset);
   setupShare({ condition, temp, outfit });
 }
 
@@ -286,58 +301,91 @@ function getOutfit({ temp, max, min, rainProbability, rainSum, wind, code }) {
   const maybeRain = !rainy && rainProbability >= 30;
   const gap = Math.abs((max ?? temp) - (min ?? temp));
   const windy = wind >= 24;
+  const outfitTemp = windy ? temp - 2 : temp;
 
-  let title = "長袖 + 軽い羽織り";
-  let copy = "暑すぎず寒すぎない体感です。脱ぎ着しやすい服を中心にすると一日ラクです。";
-  let items = ["長袖シャツ + 薄手ジャケット", "ロンT + カーディガン"];
+  let title = "長袖を基本にした服装";
+  let copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。長袖シャツやロンTを基本に、外にいる時間が長ければ薄手の羽織りを合わせると過ごしやすいです。`;
+  let items = ["長袖シャツ", "ロンT", "半袖 + 薄手アウター"];
 
-  if (temp >= 28) {
-    title = "涼しい半袖コーデ";
-    copy = "暑さを逃がす素材を選ぶ日です。汗ばむ時間が長いので、軽さと通気性を優先してください。";
-    items = ["半袖Tシャツ + 薄手パンツ", "ノースリーブ + シャツ羽織り", "リネンシャツ + ワイドパンツ"];
-  } else if (temp >= 24) {
-    title = "半袖 + 軽い羽織り";
-    copy = "日中は半袖で快適です。室内の冷房や夜の移動に備えて、薄い羽織りを足すと安心です。";
-    items = ["半袖Tシャツ + カーディガン", "半袖 + 薄手ニット", "半袖シャツ + 薄手パンツ"];
-  } else if (temp >= 20) {
-    title = "長袖か半袖レイヤード";
-    copy = "歩くと少し暖かく、止まると涼しい体感です。上に一枚足せる組み合わせが向いています。";
-    items = ["長袖シャツ + 薄手ジャケット", "半袖Tシャツ + ニット", "ロンT + シャツ羽織り"];
-  } else if (temp >= 16) {
+  if (outfitTemp >= 28) {
+    title = "半袖1枚で涼しく";
+    copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。日中は暑さを感じやすいため、半袖1枚や通気性の良い服装が向いています。`;
+    items = ["半袖Tシャツ + 薄手パンツ", "半袖シャツ + 軽いボトム", "ノースリーブ + 薄手シャツ"];
+  } else if (outfitTemp >= 24) {
+    title = "半袖 + 必要なら薄手の羽織り";
+    copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。日中は半袖で快適に過ごせます。朝晩や冷房が気になる場合は、薄手の羽織りがあると安心です。`;
+    items = ["半袖Tシャツ", "半袖 + 薄手カーディガン", "半袖シャツ + 薄手パンツ"];
+  } else if (outfitTemp >= 20) {
+    title = "長袖シャツやロンT";
+    copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。日中は過ごしやすく、長袖シャツやロンTがちょうどよい気温です。暑がりの方は半袖に薄手アウターでも調整しやすいです。`;
+    items = ["長袖シャツ", "ロンT", "半袖 + 薄手アウター"];
+  } else if (outfitTemp >= 16) {
     title = "長袖 + ライトアウター";
-    copy = "朝晩は肌寒さが出やすい気温です。トップスを厚めにするか、軽いアウターを足してください。";
-    items = ["ニット + ライトアウター", "長袖カットソー + ジャケット", "スウェット + 薄手コート"];
-  } else if (temp >= 12) {
-    title = "厚手トップス + コート";
-    copy = "冷えを感じやすい日です。首元や手首が冷えない服を選ぶと、外でも過ごしやすいです。";
-    items = ["厚手ニット + コート", "スウェット + トレンチコート", "長袖インナー + ウールジャケット"];
+    copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。少し涼しさを感じるため、長袖に軽めのアウターを合わせるとちょうどよい一日です。`;
+    items = ["長袖 + ライトアウター", "薄手ニット", "ロンT + ジャケット"];
+  } else if (outfitTemp >= 12) {
+    title = "ニットやスウェット";
+    copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。肌寒さがあるため、ニットやスウェットを中心に、外出時は軽めのコートを合わせると安心です。`;
+    items = ["ニット + 軽めコート", "スウェット + ライトコート", "長袖インナー + ジャケット"];
+  } else if (outfitTemp >= 8) {
+    title = "コートや防寒アウター";
+    copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。冷え込みを感じやすいので、コートや防寒アウターを着て出かけるのがおすすめです。`;
+    items = ["コート + ニット", "防寒アウター + スウェット", "厚手トップス + 暖かいパンツ"];
   } else {
-    title = "冬用コートで防寒";
-    copy = "しっかり寒い体感です。外にいる時間が長いなら、インナーと小物まで冬仕様にしてください。";
-    items = ["冬用コート + 防寒インナー", "厚手ニット + ダウン", "コート + マフラー + 手袋"];
+    title = "冬用コートで防寒重視";
+    copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。しっかり寒い一日です。冬用コートに防寒インナーを合わせ、外にいる時間が長い場合は首元や手元も暖かくしてください。`;
+    items = ["冬用コート + 防寒インナー", "ダウン + 厚手ニット", "コート + マフラー"];
   }
 
   const gapAdvice = gap >= 8
-    ? `寒暖差が${round(gap)}℃あります。昼は軽め、夜は羽織り推奨です。`
-    : "寒暖差は大きすぎないので、基本コーデのまま過ごしやすいです。";
+    ? "昼は暖かく、朝晩は羽織りがあると安心です。"
+    : "寒暖差は大きすぎないため、基本の服装で過ごしやすい見込みです。";
 
   const rainTitle = rainy ? "傘と濡れにくい靴" : maybeRain ? "折りたたみ傘" : "雨具は軽めでOK";
   const rainCopy = rainy
-    ? `雨の可能性が高めです。降水確率${round(rainProbability)}%なので、傘と滑りにくい靴を選ぶと動きやすいです。`
+    ? `雨が降りやすい予報です。傘を持ち、防水性のあるアウターや濡れにくい靴を選ぶと安心です。`
     : maybeRain
-      ? `降水確率${round(rainProbability)}%。小さめの折りたたみ傘をバッグに入れておくと安心です。`
-      : `降水確率${round(rainProbability)}%。大きな傘は不要そうですが、長時間外なら小さい雨具だけあると安心です。`;
+      ? `にわか雨の可能性があります。小さめの折りたたみ傘をバッグに入れておくと安心です。`
+      : `雨の心配は比較的少なめです。長時間外にいる場合だけ、念のため小さな雨具があると安心です。`;
 
   const extraTitle = "一言アドバイス";
   const extraCopy = windy
-    ? `${gapAdvice} 風がやや強めなので、風を通しにくいアウターがあると体感が安定します。`
+    ? `${gapAdvice} 風が強めで体感温度が下がりやすいため、普段より一段階暖かめの服装がおすすめです。`
     : gap >= 8
       ? gapAdvice
       : rainy
-        ? "服は暖かさよりも濡れにくさを優先。靴とバッグの素材も少し意識すると快適です。"
-        : "身軽さを優先して大丈夫です。外に長くいるなら、薄い羽織りだけ足してください。";
+        ? "服装は暖かさだけでなく、濡れにくさも意識すると快適です。靴やバッグの素材も確認しておくと安心です。"
+        : "身軽な服装で過ごしやすい見込みです。外に長くいる場合は、薄手の羽織りを一枚足すと調整しやすいです。";
 
   return { title, copy, items, rainTitle, rainCopy, extraTitle, extraCopy };
+}
+
+function setupPreference() {
+  updatePreferenceButtons(getPreference());
+  el.preferenceButtons.forEach((button) => {
+    if (button.dataset.bound === "true") return;
+    button.dataset.bound = "true";
+    button.addEventListener("click", () => {
+      const value = button.dataset.preference;
+      if (!preferences[value]) return;
+      localStorage.setItem(PREFERENCE_KEY, value);
+      updatePreferenceButtons(value);
+      if (latestWeatherData) render(latestWeatherData);
+    });
+  });
+}
+
+function getPreference() {
+  const saved = localStorage.getItem(PREFERENCE_KEY);
+  return preferences[saved] ? saved : "normal";
+}
+
+function updatePreferenceButtons(value) {
+  el.preferenceButtons.forEach((button) => {
+    const active = button.dataset.preference === value;
+    button.setAttribute("aria-checked", String(active));
+    button.classList.toggle("is-active", active);
+  });
 }
 
 function renderOutfitList(items) {
@@ -348,7 +396,7 @@ function renderOutfitList(items) {
   }));
 }
 
-function renderTimeline(hours, daily) {
+function renderTimeline(hours, daily, preferenceOffset = 0) {
   const slots = [
     { key: "morning", label: "朝", start: 6, end: 10, tempEl: el.morningTemp, copyEl: el.morningCopy },
     { key: "day", label: "昼", start: 11, end: 16, tempEl: el.dayTemp, copyEl: el.dayCopy },
@@ -365,7 +413,8 @@ function renderTimeline(hours, daily) {
     const code = codes[0] ?? daily.code;
 
     slot.tempEl.textContent = average === null ? `${round(daily.min)}-${round(daily.max)}℃` : `${round(average)}℃`;
-    slot.copyEl.textContent = timelineCopy(slot.label, average ?? (daily.min + daily.max) / 2, rain, code);
+    const clothingTemp = (average ?? (daily.min + daily.max) / 2) + preferenceOffset;
+    slot.copyEl.textContent = timelineCopy(slot.label, clothingTemp, rain, code);
   });
 }
 
@@ -373,12 +422,13 @@ function timelineCopy(label, temp, rain, code) {
   const rainy = rain >= 50 || [61, 63, 65, 80, 81, 82, 95, 96, 99].includes(code);
   const rainNote = rainy ? " + 傘" : "";
 
-  if (temp >= 28) return `${label}は半袖T + 薄手パンツ${rainNote}`;
-  if (temp >= 24) return `${label}は半袖 + カーディガン${rainNote}`;
-  if (temp >= 20) return `${label}は長袖シャツ + 薄手ジャケット${rainNote}`;
-  if (temp >= 16) return `${label}はニット + ライトアウター${rainNote}`;
-  if (temp >= 12) return `${label}は厚手ニット + コート${rainNote}`;
-  return `${label}は冬用コート + 防寒インナー${rainNote}`;
+  if (temp >= 28) return `${label}は半袖1枚${rainNote}`;
+  if (temp >= 24) return `${label}は半袖 + 薄手の羽織り${rainNote}`;
+  if (temp >= 20) return `${label}は長袖シャツかロンT${rainNote}`;
+  if (temp >= 16) return `${label}は長袖 + ライトアウター${rainNote}`;
+  if (temp >= 12) return `${label}はニットやスウェット${rainNote}`;
+  if (temp >= 8) return `${label}はコートや防寒アウター${rainNote}`;
+  return `${label}は冬用コートで防寒${rainNote}`;
 }
 
 function getSkyType(code, isDay) {
@@ -389,7 +439,8 @@ function getSkyType(code, isDay) {
 }
 
 function setupShare({ condition, temp, outfit }) {
-  el.shareButton?.addEventListener("click", async () => {
+  if (!el.shareButton) return;
+  el.shareButton.onclick = async () => {
     const shareData = {
       title: "東京の天気と服装",
       text: `東京はいま${condition}、${temp}℃。${outfit.title}がおすすめ。`,
@@ -404,7 +455,7 @@ function setupShare({ condition, temp, outfit }) {
     await navigator.clipboard?.writeText(shareData.text).catch(() => {});
     el.shareButton.setAttribute("aria-label", "服装メモをコピーしました");
     setTimeout(() => el.shareButton.setAttribute("aria-label", "共有"), 1400);
-  }, { once: true });
+  };
 }
 
 function formatDate(date) {

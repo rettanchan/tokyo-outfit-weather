@@ -283,6 +283,44 @@ p {
   border-radius: 18px;
 }
 
+.preference {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.preference span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.segmented button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.94rem;
+  font-weight: 800;
+}
+
+.segmented button.is-active {
+  color: white;
+  background: var(--green);
+  box-shadow: 0 8px 20px rgba(68, 116, 93, 0.22);
+}
+
 .outfit-card {
   display: grid;
   grid-template-columns: 42px 1fr;
