@@ -54,7 +54,7 @@ button {
 .weather-panel {
   position: relative;
   overflow: hidden;
-  min-height: 430px;
+  min-height: 410px;
   padding: 20px;
   border-radius: 24px;
 }
@@ -126,7 +126,7 @@ p {
 .sky {
   position: relative;
   overflow: hidden;
-  height: 190px;
+  height: 160px;
   margin: 14px 0 0;
   border-radius: 18px;
 }
@@ -226,7 +226,7 @@ p {
 
 .condition {
   margin: 6px 0 0;
-  font-size: 1.45rem;
+  font-size: 1.5rem;
   font-weight: 800;
   line-height: 1.2;
 }
@@ -300,6 +300,25 @@ p {
   background: rgba(230, 242, 233, 0.74);
 }
 
+.outfit-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.outfit-list li {
+  padding: 10px 12px;
+  border: 1px solid rgba(68, 116, 93, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.56);
+  color: #263134;
+  font-size: 0.96rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .item-icon {
   display: grid;
   place-items: center;
@@ -324,7 +343,7 @@ p {
 .outfit-card p {
   margin: 0;
   color: #445055;
-  font-size: 0.93rem;
+  font-size: 0.96rem;
 }
 
 .timeline ol {
@@ -374,7 +393,7 @@ footer {
   }
 
   .weather-panel {
-    min-height: 460px;
+    min-height: 440px;
   }
 }
 

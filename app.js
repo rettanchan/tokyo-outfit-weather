@@ -4,12 +4,36 @@ const TOKYO = {
   timezone: "Asia/Tokyo"
 };
 
-const API_URL = new URL("https://api.open-meteo.com/v1/forecast");
-API_URL.search = new URLSearchParams({
-  latitude: TOKYO.latitude,
-  longitude: TOKYO.longitude,
-  timezone: TOKYO.timezone,
-  forecast_days: "1",
+const PRIMARY_API_URL = buildWeatherUrl("https://api.open-meteo.com/v1/jma", {
+  current: [
+    "temperature_2m",
+    "apparent_temperature",
+    "precipitation",
+    "rain",
+    "weather_code",
+    "cloud_cover",
+    "wind_speed_10m",
+    "is_day"
+  ],
+  hourly: [
+    "temperature_2m",
+    "apparent_temperature",
+    "precipitation",
+    "weather_code",
+    "wind_speed_10m"
+  ],
+  daily: [
+    "weather_code",
+    "temperature_2m_max",
+    "temperature_2m_min",
+    "apparent_temperature_max",
+    "apparent_temperature_min",
+    "precipitation_sum",
+    "wind_speed_10m_max"
+  ]
+});
+
+const PRECIP_API_URL = buildWeatherUrl("https://api.open-meteo.com/v1/forecast", {
   current: [
     "temperature_2m",
     "apparent_temperature",
@@ -20,7 +44,7 @@ API_URL.search = new URLSearchParams({
     "cloud_cover",
     "wind_speed_10m",
     "is_day"
-  ].join(","),
+  ],
   hourly: [
     "temperature_2m",
     "apparent_temperature",
@@ -28,7 +52,7 @@ API_URL.search = new URLSearchParams({
     "precipitation",
     "weather_code",
     "wind_speed_10m"
-  ].join(","),
+  ],
   daily: [
     "weather_code",
     "temperature_2m_max",
@@ -38,8 +62,22 @@ API_URL.search = new URLSearchParams({
     "precipitation_probability_max",
     "precipitation_sum",
     "wind_speed_10m_max"
-  ].join(",")
+  ]
 });
+
+function buildWeatherUrl(endpoint, variables) {
+  const url = new URL(endpoint);
+  url.search = new URLSearchParams({
+  latitude: TOKYO.latitude,
+  longitude: TOKYO.longitude,
+  timezone: TOKYO.timezone,
+  forecast_days: "1",
+  current: variables.current.join(","),
+  hourly: variables.hourly.join(","),
+  daily: variables.daily.join(",")
+  });
+  return url;
+}
 
 const el = {
   location: document.querySelector("#location-label"),
@@ -53,6 +91,7 @@ const el = {
   updated: document.querySelector("#updated-label"),
   primaryTitle: document.querySelector("#primary-title"),
   primaryCopy: document.querySelector("#primary-copy"),
+  outfitList: document.querySelector("#outfit-list"),
   rainTitle: document.querySelector("#rain-title"),
   rainCopy: document.querySelector("#rain-copy"),
   extraTitle: document.querySelector("#extra-title"),
@@ -139,9 +178,11 @@ async function init() {
 
 async function fetchWeather() {
   try {
-    const response = await fetch(API_URL, { cache: "no-store" });
-    if (!response.ok) throw new Error(`weather ${response.status}`);
-    const data = await response.json();
+    const [primary, precip] = await Promise.all([
+      fetchJson(PRIMARY_API_URL),
+      fetchJson(PRECIP_API_URL).catch(() => null)
+    ]);
+    const data = mergeWeather(primary, precip);
     localStorage.setItem("tokyo-weather-cache", JSON.stringify({ savedAt: Date.now(), data }));
     return data;
   } catch {
@@ -149,6 +190,28 @@ async function fetchWeather() {
     if (cached) return JSON.parse(cached).data;
     return fallback;
   }
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`weather ${response.status}`);
+  return response.json();
+}
+
+function mergeWeather(primary, precip) {
+  if (!precip) return { ...primary, source: "Open-Meteo JMA" };
+  return {
+    ...primary,
+    source: "Open-Meteo JMA + Forecast",
+    hourly: {
+      ...primary.hourly,
+      precipitation_probability: precip.hourly?.precipitation_probability || []
+    },
+    daily: {
+      ...primary.daily,
+      precipitation_probability_max: precip.daily?.precipitation_probability_max || [0]
+    }
+  };
 }
 
 function render(data) {
@@ -178,11 +241,12 @@ function render(data) {
   el.feel.textContent = `${feels}℃`;
   el.primaryTitle.textContent = outfit.title;
   el.primaryCopy.textContent = outfit.copy;
+  renderOutfitList(outfit.items);
   el.rainTitle.textContent = outfit.rainTitle;
   el.rainCopy.textContent = outfit.rainCopy;
   el.extraTitle.textContent = outfit.extraTitle;
   el.extraCopy.textContent = outfit.extraCopy;
-  el.updated.textContent = `更新: ${formatTime(now)} · Open-Meteo予報`;
+  el.updated.textContent = `更新: ${formatTime(now)} · ${data.source || "Open-Meteo"}予報`;
 
   el.sky.dataset.weather = getSkyType(current.weather_code ?? daily.code, current.is_day);
 
@@ -224,30 +288,38 @@ function getOutfit({ temp, max, min, rainProbability, rainSum, wind, code }) {
   const windy = wind >= 24;
 
   let title = "長袖 + 軽い羽織り";
-  let copy = "暑すぎず寒すぎない体感です。ロンTやシャツに、脱ぎ着しやすいカーディガンや薄手ジャケットが合います。";
+  let copy = "暑すぎず寒すぎない体感です。脱ぎ着しやすい服を中心にすると一日ラクです。";
+  let items = ["長袖シャツ + 薄手ジャケット", "ロンT + カーディガン"];
 
-  if (temp >= 30) {
-    title = "涼しい半袖 + 日差し対策";
-    copy = "かなり暑く感じます。通気性のいい半袖、薄手ボトム、帽子や日焼け止めを優先してください。";
-  } else if (temp >= 26) {
-    title = "半袖 + 薄い羽織り";
-    copy = "日中は軽装で十分です。冷房や夜の移動に備えて、薄いシャツやカーディガンがあると快適です。";
-  } else if (temp >= 22) {
-    title = "薄手の長袖か半袖 + 羽織り";
-    copy = "歩くと少し暖かい体感です。薄手の長袖を基本に、暑がりなら半袖へ軽い羽織りを足すのがちょうどいいです。";
-  } else if (temp >= 18) {
-    title = "長袖 + カーディガン";
-    copy = "過ごしやすいけれど、日陰や夕方は少し涼しくなります。長袖に軽い羽織りで調整しやすく。";
-  } else if (temp >= 14) {
-    title = "スウェット + 薄手アウター";
-    copy = "肌寒さがあります。厚めの長袖やスウェットに、トレンチやライトジャケットを重ねると安心です。";
-  } else if (temp >= 10) {
-    title = "ニット + コート";
-    copy = "冷えやすい体感です。ニットや厚手トップスにコート、首元の防寒もあると楽です。";
+  if (temp >= 28) {
+    title = "涼しい半袖コーデ";
+    copy = "暑さを逃がす素材を選ぶ日です。汗ばむ時間が長いので、軽さと通気性を優先してください。";
+    items = ["半袖Tシャツ + 薄手パンツ", "ノースリーブ + シャツ羽織り", "リネンシャツ + ワイドパンツ"];
+  } else if (temp >= 24) {
+    title = "半袖 + 軽い羽織り";
+    copy = "日中は半袖で快適です。室内の冷房や夜の移動に備えて、薄い羽織りを足すと安心です。";
+    items = ["半袖Tシャツ + カーディガン", "半袖 + 薄手ニット", "半袖シャツ + 薄手パンツ"];
+  } else if (temp >= 20) {
+    title = "長袖か半袖レイヤード";
+    copy = "歩くと少し暖かく、止まると涼しい体感です。上に一枚足せる組み合わせが向いています。";
+    items = ["長袖シャツ + 薄手ジャケット", "半袖Tシャツ + ニット", "ロンT + シャツ羽織り"];
+  } else if (temp >= 16) {
+    title = "長袖 + ライトアウター";
+    copy = "朝晩は肌寒さが出やすい気温です。トップスを厚めにするか、軽いアウターを足してください。";
+    items = ["ニット + ライトアウター", "長袖カットソー + ジャケット", "スウェット + 薄手コート"];
+  } else if (temp >= 12) {
+    title = "厚手トップス + コート";
+    copy = "冷えを感じやすい日です。首元や手首が冷えない服を選ぶと、外でも過ごしやすいです。";
+    items = ["厚手ニット + コート", "スウェット + トレンチコート", "長袖インナー + ウールジャケット"];
   } else {
-    title = "冬コート + 防寒小物";
-    copy = "しっかり寒いです。冬用コート、マフラー、暖かいインナーまで入れてください。";
+    title = "冬用コートで防寒";
+    copy = "しっかり寒い体感です。外にいる時間が長いなら、インナーと小物まで冬仕様にしてください。";
+    items = ["冬用コート + 防寒インナー", "厚手ニット + ダウン", "コート + マフラー + 手袋"];
   }
+
+  const gapAdvice = gap >= 8
+    ? `寒暖差が${round(gap)}℃あります。昼は軽め、夜は羽織り推奨です。`
+    : "寒暖差は大きすぎないので、基本コーデのまま過ごしやすいです。";
 
   const rainTitle = rainy ? "傘と濡れにくい靴" : maybeRain ? "折りたたみ傘" : "雨具は軽めでOK";
   const rainCopy = rainy
@@ -256,14 +328,24 @@ function getOutfit({ temp, max, min, rainProbability, rainSum, wind, code }) {
       ? `降水確率${round(rainProbability)}%。小さめの折りたたみ傘をバッグに入れておくと安心です。`
       : `降水確率${round(rainProbability)}%。大きな傘は不要そうですが、長時間外なら小さい雨具だけあると安心です。`;
 
-  const extraTitle = windy ? "風を通しにくい羽織り" : gap >= 8 ? "脱ぎ着しやすさ重視" : "身軽な持ち物";
+  const extraTitle = "一言アドバイス";
   const extraCopy = windy
-    ? `風がやや強めです。軽い服でも、風を通しにくいアウターを選ぶと体感が安定します。`
+    ? `${gapAdvice} 風がやや強めなので、風を通しにくいアウターがあると体感が安定します。`
     : gap >= 8
-      ? `朝晩と日中の差が大きい日です。前開きの羽織りでこまめに調整できる服装が向いています。`
-      : "大きな寒暖差は控えめです。必要な持ち物を絞って、歩きやすさを優先して大丈夫です。";
+      ? gapAdvice
+      : rainy
+        ? "服は暖かさよりも濡れにくさを優先。靴とバッグの素材も少し意識すると快適です。"
+        : "身軽さを優先して大丈夫です。外に長くいるなら、薄い羽織りだけ足してください。";
 
-  return { title, copy, rainTitle, rainCopy, extraTitle, extraCopy };
+  return { title, copy, items, rainTitle, rainCopy, extraTitle, extraCopy };
+}
+
+function renderOutfitList(items) {
+  el.outfitList.replaceChildren(...items.map((item) => {
+    const li = document.createElement("li");
+    li.textContent = item;
+    return li;
+  }));
 }
 
 function renderTimeline(hours, daily) {

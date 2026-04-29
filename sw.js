@@ -1,4 +1,4 @@
-const CACHE_NAME = "tokyo-outfit-v2";
+const CACHE_NAME = "tokyo-outfit-v3";
 const ASSETS = [
   "./",
   "./index.html",
