@@ -365,17 +365,20 @@ function renderTimeline(hours, daily) {
     const code = codes[0] ?? daily.code;
 
     slot.tempEl.textContent = average === null ? `${round(daily.min)}-${round(daily.max)}℃` : `${round(average)}℃`;
-    slot.copyEl.textContent = timelineCopy(average ?? (daily.min + daily.max) / 2, rain, code);
+    slot.copyEl.textContent = timelineCopy(slot.label, average ?? (daily.min + daily.max) / 2, rain, code);
   });
 }
 
-function timelineCopy(temp, rain, code) {
-  if (rain >= 50 || [61, 63, 65, 80, 81, 82, 95, 96, 99].includes(code)) return "雨具を手元に。";
-  if (temp >= 26) return "軽装で涼しく。";
-  if (temp >= 22) return "薄手で快適。";
-  if (temp >= 18) return "羽織りで調整。";
-  if (temp >= 14) return "少し暖かめに。";
-  return "しっかり防寒。";
+function timelineCopy(label, temp, rain, code) {
+  const rainy = rain >= 50 || [61, 63, 65, 80, 81, 82, 95, 96, 99].includes(code);
+  const rainNote = rainy ? " + 傘" : "";
+
+  if (temp >= 28) return `${label}は半袖T + 薄手パンツ${rainNote}`;
+  if (temp >= 24) return `${label}は半袖 + カーディガン${rainNote}`;
+  if (temp >= 20) return `${label}は長袖シャツ + 薄手ジャケット${rainNote}`;
+  if (temp >= 16) return `${label}はニット + ライトアウター${rainNote}`;
+  if (temp >= 12) return `${label}は厚手ニット + コート${rainNote}`;
+  return `${label}は冬用コート + 防寒インナー${rainNote}`;
 }
 
 function getSkyType(code, isDay) {
