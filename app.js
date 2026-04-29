@@ -92,6 +92,7 @@ const el = {
   location: document.querySelector("#location-label"),
   date: document.querySelector("#date-label"),
   condition: document.querySelector("#condition-label"),
+  weatherSummary: document.querySelector("#weather-summary"),
   temp: document.querySelector("#current-temp"),
   range: document.querySelector("#range-label"),
   rain: document.querySelector("#rain-label"),
@@ -252,7 +253,8 @@ function render(data) {
   const feels = round(current.apparent_temperature ?? current.temperature_2m);
   const temp = round(current.temperature_2m ?? feels);
   const preference = getPreference();
-  const condition = weatherText[current.weather_code] || weatherText[daily.code] || "天気";
+  const dayParts = getDayParts(hours, daily);
+  const condition = describeWeatherFlow(hours, daily.code);
   const outfit = getOutfit({
     temp: feels + preferences[preference].offset,
     actualFeels: feels,
@@ -268,6 +270,15 @@ function render(data) {
   el.location.textContent = "Tokyo · Live forecast";
   el.date.textContent = formatDate(now);
   el.condition.textContent = condition;
+  el.weatherSummary.textContent = buildWeatherSummary({
+    nowTemp: temp,
+    dayTemp: dayParts.day.temp,
+    nightTemp: dayParts.night.temp,
+    flow: condition,
+    rainProbability: daily.rainProbability,
+    rainSum: daily.rainSum,
+    gap: Math.abs((daily.max ?? temp) - (daily.min ?? temp))
+  });
   el.temp.textContent = temp;
   el.range.textContent = `${round(daily.max)}℃ / ${round(daily.min)}℃`;
   el.rain.textContent = `${round(daily.rainProbability)}%`;
@@ -283,7 +294,7 @@ function render(data) {
 
   el.sky.dataset.weather = getSkyType(current.weather_code ?? daily.code, current.is_day);
 
-  renderTimeline(hours, daily, preferences[preference].offset);
+  renderTimeline(hours, daily, preferences[preference].offset, dayParts);
   setupShare({ condition, temp, outfit });
 }
 
@@ -420,26 +431,81 @@ function renderOutfitList(items) {
   }));
 }
 
-function renderTimeline(hours, daily, preferenceOffset = 0) {
+function renderTimeline(hours, daily, preferenceOffset = 0, dayParts = getDayParts(hours, daily)) {
   const slots = [
-    { key: "morning", label: "朝", start: 6, end: 10, tempEl: el.morningTemp, copyEl: el.morningCopy },
-    { key: "day", label: "昼", start: 11, end: 16, tempEl: el.dayTemp, copyEl: el.dayCopy },
-    { key: "night", label: "夜", start: 18, end: 23, tempEl: el.nightTemp, copyEl: el.nightCopy }
+    { key: "morning", label: "朝", tempEl: el.morningTemp, copyEl: el.morningCopy },
+    { key: "day", label: "昼", tempEl: el.dayTemp, copyEl: el.dayCopy },
+    { key: "night", label: "夜", tempEl: el.nightTemp, copyEl: el.nightCopy }
   ];
 
   slots.forEach((slot) => {
-    const slice = hours.filter((hour) => hour.hour >= slot.start && hour.hour <= slot.end);
-    const temps = slice.map((hour) => hour.apparent ?? hour.temp).filter(Number.isFinite);
-    const rains = slice.map((hour) => hour.rainProbability ?? 0);
-    const codes = slice.map((hour) => hour.code).filter(Number.isFinite);
-    const average = temps.length ? temps.reduce((sum, value) => sum + value, 0) / temps.length : null;
-    const rain = rains.length ? Math.max(...rains) : daily.rainProbability;
-    const code = codes[0] ?? daily.code;
+    const part = dayParts[slot.key];
 
-    slot.tempEl.textContent = average === null ? `${round(daily.min)}-${round(daily.max)}℃` : `${round(average)}℃`;
-    const clothingTemp = (average ?? (daily.min + daily.max) / 2) + preferenceOffset;
-    slot.copyEl.textContent = timelineCopy(slot.label, clothingTemp, rain, code);
+    slot.tempEl.textContent = `${round(part.temp)}℃`;
+    slot.copyEl.textContent = timelineCopy(slot.label, part.temp + preferenceOffset, part.rain, part.code);
   });
+}
+
+function getDayParts(hours, daily) {
+  return {
+    morning: summarizePart(hours, daily, 6, 10),
+    day: summarizePart(hours, daily, 11, 16),
+    night: summarizePart(hours, daily, 18, 23)
+  };
+}
+
+function summarizePart(hours, daily, start, end) {
+  const slice = hours.filter((hour) => hour.hour >= start && hour.hour <= end);
+  const temps = slice.map((hour) => hour.apparent ?? hour.temp).filter(Number.isFinite);
+  const rains = slice.map((hour) => hour.rainProbability ?? 0);
+  const codes = slice.map((hour) => hour.code).filter(Number.isFinite);
+  const temp = temps.length
+    ? temps.reduce((sum, value) => sum + value, 0) / temps.length
+    : (daily.min + daily.max) / 2;
+
+  return {
+    temp,
+    rain: rains.length ? Math.max(...rains) : daily.rainProbability,
+    code: dominantCode(codes) ?? daily.code
+  };
+}
+
+function dominantCode(codes) {
+  if (!codes.length) return null;
+  const severity = [99, 96, 95, 82, 81, 80, 65, 63, 61, 55, 53, 51, 75, 73, 71, 3, 2, 1, 0];
+  return [...codes].sort((a, b) => severity.indexOf(a) - severity.indexOf(b))[0];
+}
+
+function describeWeatherFlow(hours, dailyCode) {
+  const parts = getDayParts(hours, { ...normalizeDaily(fallback.daily), code: dailyCode, rainProbability: 0 });
+  const labels = [parts.morning.code, parts.day.code, parts.night.code].map(weatherGroup);
+  const compact = labels.filter((label, index) => index === 0 || label !== labels[index - 1]);
+
+  if (compact.length <= 1) return compact[0] || weatherText[dailyCode] || "天気";
+  if (compact.length === 2) return `${compact[0]}のち${compact[1]}`;
+  return `${compact[0]}のち${compact[1]}、夜は${compact[2]}`;
+}
+
+function weatherGroup(code) {
+  if ([95, 96, 99].includes(code)) return "雷雨";
+  if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) return "雨";
+  if ([71, 73, 75].includes(code)) return "雪";
+  if ([2, 3, 45, 48].includes(code)) return "曇り";
+  if ([0, 1].includes(code)) return "晴れ";
+  return weatherText[code] || "曇り";
+}
+
+function buildWeatherSummary({ nowTemp, dayTemp, nightTemp, flow, rainProbability, rainSum, gap }) {
+  const rainText = rainProbability >= 50 || rainSum >= 1
+    ? "雨の可能性が高いため、傘を持って出ると安心です。"
+    : rainProbability >= 30
+      ? "にわか雨に備えて、折りたたみ傘があると安心です。"
+      : "雨具は必須ではなさそうです。";
+  const gapText = gap >= 8
+    ? "昼は暖かく、朝晩は羽織りがあると安心です。"
+    : "一日の寒暖差は比較的ゆるやかです。";
+
+  return `今日は今${round(nowTemp)}℃、昼${round(dayTemp)}℃、夜${round(nightTemp)}℃で、天気は${flow}の見込みです。${gapText}${rainText}`;
 }
 
 function timelineCopy(label, temp, rain, code) {

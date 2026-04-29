@@ -251,6 +251,14 @@ p {
   line-height: 1.2;
 }
 
+.weather-summary {
+  max-width: 25rem;
+  margin: 10px 0 0;
+  color: #445055;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
 .temp {
   display: flex;
   align-items: flex-start;
