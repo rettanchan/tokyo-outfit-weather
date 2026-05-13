@@ -1,7 +1,7 @@
-{
+﻿{
   "name": "東京の天気と服装",
   "short_name": "東京服装",
-  "description": "今日の東京の天気と服装提案をiPhoneで見やすく表示します。",
+  "description": "東京の今日と明日の天気を見ながら、レディースファッションの服装アドバイスを確認できるiPhone向けPWAです。",
   "lang": "ja",
   "start_url": "./index.html",
   "scope": "./",
@@ -10,15 +10,7 @@
   "theme_color": "#f8f3e8",
   "orientation": "portrait",
   "icons": [
-    {
-      "src": "icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }

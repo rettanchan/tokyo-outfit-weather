@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ja">
   <head>
     <meta charset="utf-8">
@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#f8f3e8">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="東京服装">
-    <meta name="description" content="今日の東京の天気を取得して、見たときにちょうどいい服装を提案するPWA。">
+    <meta name="apple-mobile-web-app-title" content="東京の服装">
+    <meta name="description" content="東京の今日と明日の天気を見ながら、レディースファッションの服装アドバイスを確認できるiPhone向けPWAです。">
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
     <link rel="icon" href="icons/icon-192.png">
@@ -15,126 +15,35 @@
     <title>東京の天気と服装</title>
   </head>
   <body>
-    <main class="app" aria-labelledby="app-title">
-      <section class="weather-panel">
-        <div class="topbar">
-          <div>
-            <p class="eyebrow" id="location-label">Tokyo · Loading</p>
-            <h1 id="app-title">東京の服装</h1>
-          </div>
-          <div class="top-actions">
-            <button class="icon-button" id="refresh-button" type="button" aria-label="更新">
-              <span aria-hidden="true">↻</span>
-            </button>
-            <button class="icon-button" id="share-button" type="button" aria-label="共有">
-              <span aria-hidden="true">↑</span>
-            </button>
-          </div>
-        </div>
-
-        <div class="sky" id="sky-art" aria-hidden="true">
-          <div class="sun"></div>
-          <div class="cloud cloud-a"></div>
-          <div class="cloud cloud-b"></div>
-        </div>
-
+    <main class="app">
+      <section class="hero">
+        <header class="topbar">
+          <div><p class="eyebrow">Tokyo Weather</p><h1>天気と服装</h1></div>
+          <button class="icon-button" id="refresh" type="button" aria-label="更新">↻</button>
+        </header>
         <div class="weather-main">
-          <div>
-            <p class="date" id="date-label">今日の天気を取得中</p>
-            <p class="condition" id="condition-label">読み込み中</p>
-            <p class="weather-summary" id="weather-summary">天気の流れを確認中です。</p>
-          </div>
-          <div class="temp">
-            <span id="current-temp">--</span>
-            <small>℃</small>
-          </div>
+          <div><p class="date" id="date">読み込み中</p><p class="condition" id="condition">--</p></div>
+          <div class="temp"><span id="temp">--</span><small>°</small></div>
         </div>
-
-        <div class="metrics" aria-label="天気の詳細">
-          <div>
-            <span>最高 / 最低</span>
-            <strong id="range-label">-- / --</strong>
-          </div>
-          <div>
-            <span>降水</span>
-            <strong id="rain-label">--%</strong>
-          </div>
-          <div>
-            <span>体感</span>
-            <strong id="feel-label">--℃</strong>
-          </div>
+        <p class="summary" id="summary">今日と明日の予報を取得しています。</p>
+        <div class="tabs" role="tablist" aria-label="表示する日">
+          <button class="tab active" type="button" data-day="0" aria-selected="true">今日</button>
+          <button class="tab" type="button" data-day="1" aria-selected="false">明日</button>
+        </div>
+        <div class="metrics">
+          <div><span>最高 / 最低</span><strong id="range">--</strong></div>
+          <div><span>降水</span><strong id="rain">--</strong></div>
+          <div><span>体感</span><strong id="feel">--</strong></div>
+          <div><span>風</span><strong id="wind">--</strong></div>
         </div>
       </section>
-
-      <section class="suggestion" aria-labelledby="suggestion-title">
-        <div class="section-heading">
-          <p class="eyebrow">Outfit</p>
-          <h2 id="suggestion-title">今のおすすめ</h2>
-        </div>
-
-        <div class="preference" aria-labelledby="preference-title">
-          <span id="preference-title">体感設定</span>
-          <div class="segmented" role="radiogroup" aria-label="体感設定">
-            <button type="button" role="radio" aria-checked="false" data-preference="hot">暑がり</button>
-            <button type="button" role="radio" aria-checked="true" data-preference="normal">普通</button>
-            <button type="button" role="radio" aria-checked="false" data-preference="cold">寒がり</button>
-          </div>
-        </div>
-
-        <article class="outfit-card primary">
-          <div class="item-icon" aria-hidden="true">◎</div>
-          <div>
-            <h3 id="primary-title">天気に合わせて提案します</h3>
-            <p id="primary-copy">取得した気温、体感温度、雨、風を見て、その時点で着やすい服装を表示します。</p>
-            <ul class="outfit-list" id="outfit-list" aria-label="具体的なコーデ候補"></ul>
-          </div>
-        </article>
-
-        <div class="checklist">
-          <article class="outfit-card">
-            <div class="item-icon" aria-hidden="true">□</div>
-            <div>
-              <h3 id="rain-title">雨具</h3>
-              <p id="rain-copy">降水確率を確認中です。</p>
-            </div>
-          </article>
-          <article class="outfit-card">
-            <div class="item-icon" aria-hidden="true">◇</div>
-            <div>
-              <h3 id="extra-title">一言アドバイス</h3>
-              <p id="extra-copy">風や寒暖差を確認中です。</p>
-            </div>
-          </article>
-        </div>
+      <section class="panel">
+        <div class="section-heading"><p class="eyebrow">Ladies Outfit</p><h2>レディース服装アドバイス</h2></div>
+        <article class="advice-card"><h3 id="advice-title">提案を作成中</h3><p id="advice-copy">天気に合わせて服装を提案します。</p><ul id="items"></ul></article>
+        <div class="note-grid"><article><h3 id="rain-title">雨対策</h3><p id="rain-copy">確認中</p></article><article><h3>一言メモ</h3><p id="extra-copy">確認中</p></article></div>
       </section>
-
-      <section class="timeline" aria-labelledby="timeline-title">
-        <div class="section-heading compact">
-          <p class="eyebrow">Day flow</p>
-          <h2 id="timeline-title">時間帯の目安</h2>
-        </div>
-        <ol>
-          <li>
-            <span>朝</span>
-            <strong id="morning-temp">--℃</strong>
-            <p id="morning-copy">取得中</p>
-          </li>
-          <li>
-            <span>昼</span>
-            <strong id="day-temp">--℃</strong>
-            <p id="day-copy">取得中</p>
-          </li>
-          <li>
-            <span>夜</span>
-            <strong id="night-temp">--℃</strong>
-            <p id="night-copy">取得中</p>
-          </li>
-        </ol>
-      </section>
-
-      <footer>
-        <p id="updated-label">Open-Meteoから当日予報を取得します</p>
-      </footer>
+      <section class="panel timeline"><div class="section-heading"><p class="eyebrow">Day Flow</p><h2>時間帯の目安</h2></div><ol id="timeline"></ol></section>
+      <footer><p id="updated">Open-Meteoから予報を取得します</p></footer>
     </main>
     <script src="app.js"></script>
   </body>

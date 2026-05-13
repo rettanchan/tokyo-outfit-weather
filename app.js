@@ -1,571 +1,97 @@
-const TOKYO = {
-  latitude: 35.6762,
-  longitude: 139.6503,
-  timezone: "Asia/Tokyo"
+﻿const TOKYO = { latitude: 35.6762, longitude: 139.6503, timezone: "Asia/Tokyo" };
+const state = { day: 0, data: null };
+const $ = (id) => document.getElementById(id);
+const els = {
+  refresh: $("refresh"), date: $("date"), condition: $("condition"), temp: $("temp"),
+  summary: $("summary"), range: $("range"), rain: $("rain"), feel: $("feel"), wind: $("wind"),
+  title: $("advice-title"), copy: $("advice-copy"), items: $("items"), rainTitle: $("rain-title"),
+  rainCopy: $("rain-copy"), extraCopy: $("extra-copy"), timeline: $("timeline"), updated: $("updated")
 };
+const weatherText = { 0:"快晴",1:"晴れ",2:"晴れ時々くもり",3:"くもり",45:"霧",48:"霧",51:"小雨",53:"小雨",55:"小雨",61:"雨",63:"雨",65:"強い雨",80:"にわか雨",81:"にわか雨",82:"強いにわか雨",95:"雷雨",96:"雷雨",99:"雷雨" };
+const rainCodes = new Set([51,53,55,61,63,65,80,81,82,95,96,99]);
 
-const PREFERENCE_KEY = "tokyo-outfit-preference";
-const preferences = {
-  hot: { label: "暑がり", offset: 2 },
-  normal: { label: "普通", offset: 0 },
-  cold: { label: "寒がり", offset: -2 }
-};
-
-let latestWeatherData = null;
-
-const PRIMARY_API_URL = buildWeatherUrl("https://api.open-meteo.com/v1/jma", {
-  current: [
-    "temperature_2m",
-    "apparent_temperature",
-    "precipitation",
-    "rain",
-    "weather_code",
-    "cloud_cover",
-    "wind_speed_10m",
-    "is_day"
-  ],
-  hourly: [
-    "temperature_2m",
-    "apparent_temperature",
-    "precipitation",
-    "weather_code",
-    "wind_speed_10m"
-  ],
-  daily: [
-    "weather_code",
-    "temperature_2m_max",
-    "temperature_2m_min",
-    "apparent_temperature_max",
-    "apparent_temperature_min",
-    "precipitation_sum",
-    "wind_speed_10m_max"
-  ]
+document.querySelectorAll("[data-day]").forEach((button) => {
+  button.addEventListener("click", () => { state.day = Number(button.dataset.day); render(); });
 });
+els.refresh.addEventListener("click", loadWeather);
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+loadWeather();
 
-const PRECIP_API_URL = buildWeatherUrl("https://api.open-meteo.com/v1/forecast", {
-  current: [
-    "temperature_2m",
-    "apparent_temperature",
-    "precipitation",
-    "rain",
-    "showers",
-    "weather_code",
-    "cloud_cover",
-    "wind_speed_10m",
-    "is_day"
-  ],
-  hourly: [
-    "temperature_2m",
-    "apparent_temperature",
-    "precipitation_probability",
-    "precipitation",
-    "weather_code",
-    "wind_speed_10m"
-  ],
-  daily: [
-    "weather_code",
-    "temperature_2m_max",
-    "temperature_2m_min",
-    "apparent_temperature_max",
-    "apparent_temperature_min",
-    "precipitation_probability_max",
-    "precipitation_sum",
-    "wind_speed_10m_max"
-  ]
-});
-
-function buildWeatherUrl(endpoint, variables) {
-  const url = new URL(endpoint);
-  url.search = new URLSearchParams({
-  latitude: TOKYO.latitude,
-  longitude: TOKYO.longitude,
-  timezone: TOKYO.timezone,
-  forecast_days: "1",
-  current: variables.current.join(","),
-  hourly: variables.hourly.join(","),
-  daily: variables.daily.join(",")
-  });
-  return url;
-}
-
-const el = {
-  location: document.querySelector("#location-label"),
-  date: document.querySelector("#date-label"),
-  condition: document.querySelector("#condition-label"),
-  weatherSummary: document.querySelector("#weather-summary"),
-  temp: document.querySelector("#current-temp"),
-  range: document.querySelector("#range-label"),
-  rain: document.querySelector("#rain-label"),
-  feel: document.querySelector("#feel-label"),
-  sky: document.querySelector("#sky-art"),
-  updated: document.querySelector("#updated-label"),
-  primaryTitle: document.querySelector("#primary-title"),
-  primaryCopy: document.querySelector("#primary-copy"),
-  outfitList: document.querySelector("#outfit-list"),
-  rainTitle: document.querySelector("#rain-title"),
-  rainCopy: document.querySelector("#rain-copy"),
-  extraTitle: document.querySelector("#extra-title"),
-  extraCopy: document.querySelector("#extra-copy"),
-  morningTemp: document.querySelector("#morning-temp"),
-  morningCopy: document.querySelector("#morning-copy"),
-  dayTemp: document.querySelector("#day-temp"),
-  dayCopy: document.querySelector("#day-copy"),
-  nightTemp: document.querySelector("#night-temp"),
-  nightCopy: document.querySelector("#night-copy"),
-  refreshButton: document.querySelector("#refresh-button"),
-  shareButton: document.querySelector("#share-button"),
-  preferenceButtons: [...document.querySelectorAll("[data-preference]")]
-};
-
-const weatherText = {
-  0: "快晴",
-  1: "晴れ",
-  2: "晴れ時々くもり",
-  3: "くもり",
-  45: "霧",
-  48: "霧",
-  51: "弱い霧雨",
-  53: "霧雨",
-  55: "強い霧雨",
-  61: "小雨",
-  63: "雨",
-  65: "強い雨",
-  66: "冷たい雨",
-  67: "冷たい雨",
-  71: "弱い雪",
-  73: "雪",
-  75: "強い雪",
-  80: "にわか雨",
-  81: "にわか雨",
-  82: "強いにわか雨",
-  95: "雷雨",
-  96: "雷雨",
-  99: "強い雷雨"
-};
-
-const fallback = {
-  current: {
-    time: new Date().toISOString(),
-    temperature_2m: 20,
-    apparent_temperature: 20,
-    precipitation: 0,
-    weather_code: 2,
-    wind_speed_10m: 10,
-    is_day: 1
-  },
-  hourly: {
-    time: [],
-    temperature_2m: [],
-    apparent_temperature: [],
-    precipitation_probability: [],
-    precipitation: [],
-    weather_code: [],
-    wind_speed_10m: []
-  },
-  daily: {
-    time: [new Date().toISOString().slice(0, 10)],
-    weather_code: [2],
-    temperature_2m_max: [24],
-    temperature_2m_min: [15],
-    apparent_temperature_max: [24],
-    apparent_temperature_min: [15],
-    precipitation_probability_max: [30],
-    precipitation_sum: [0],
-    wind_speed_10m_max: [14]
-  }
-};
-
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
-  });
-}
-
-init();
-
-async function init() {
-  setupPreference();
-  setupRefresh();
-  const data = await fetchWeather();
-  latestWeatherData = data;
-  render(data);
-}
-
-async function refreshWeather() {
-  if (!el.refreshButton) return;
-  el.refreshButton.disabled = true;
-  el.refreshButton.classList.add("is-loading");
-  el.updated.textContent = "更新中...";
-
+async function loadWeather() {
+  els.refresh.disabled = true;
+  els.updated.textContent = "更新中...";
   try {
-    const data = await fetchWeather();
-    latestWeatherData = data;
-    render(data);
-  } finally {
-    el.refreshButton.disabled = false;
-    el.refreshButton.classList.remove("is-loading");
-  }
-}
-
-async function fetchWeather() {
-  try {
-    const [primary, precip] = await Promise.all([
-      fetchJson(PRIMARY_API_URL),
-      fetchJson(PRECIP_API_URL).catch(() => null)
-    ]);
-    const data = mergeWeather(primary, precip);
-    localStorage.setItem("tokyo-weather-cache", JSON.stringify({ savedAt: Date.now(), data }));
-    return data;
-  } catch {
-    const cached = localStorage.getItem("tokyo-weather-cache");
-    if (cached) return JSON.parse(cached).data;
-    return fallback;
-  }
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(`weather ${response.status}`);
-  return response.json();
-}
-
-function mergeWeather(primary, precip) {
-  if (!precip) return { ...primary, source: "Open-Meteo JMA" };
-  return {
-    ...primary,
-    source: "Open-Meteo JMA + Forecast",
-    hourly: {
-      ...primary.hourly,
-      precipitation_probability: precip.hourly?.precipitation_probability || []
-    },
-    daily: {
-      ...primary.daily,
-      precipitation_probability_max: precip.daily?.precipitation_probability_max || [0]
-    }
-  };
-}
-
-function render(data) {
-  const current = data.current || fallback.current;
-  const daily = normalizeDaily(data.daily);
-  const hours = normalizeHours(data.hourly);
-  const now = new Date(current.time || Date.now());
-  const feels = round(current.apparent_temperature ?? current.temperature_2m);
-  const temp = round(current.temperature_2m ?? feels);
-  const preference = getPreference();
-  const dayParts = getDayParts(hours, daily);
-  const condition = describeWeatherFlow(hours, daily.code);
-  const outfit = getOutfit({
-    temp: feels + preferences[preference].offset,
-    actualFeels: feels,
-    preference,
-    max: daily.max,
-    min: daily.min,
-    rainProbability: daily.rainProbability,
-    rainSum: daily.rainSum,
-    wind: current.wind_speed_10m ?? daily.wind,
-    code: current.weather_code ?? daily.code
-  });
-
-  el.location.textContent = "Tokyo · Live forecast";
-  el.date.textContent = formatDate(now);
-  el.condition.textContent = condition;
-  el.weatherSummary.textContent = buildWeatherSummary({
-    nowTemp: temp,
-    dayTemp: dayParts.day.temp,
-    nightTemp: dayParts.night.temp,
-    flow: condition,
-    rainProbability: daily.rainProbability,
-    rainSum: daily.rainSum,
-    gap: Math.abs((daily.max ?? temp) - (daily.min ?? temp))
-  });
-  el.temp.textContent = temp;
-  el.range.textContent = `${round(daily.max)}℃ / ${round(daily.min)}℃`;
-  el.rain.textContent = `${round(daily.rainProbability)}%`;
-  el.feel.textContent = `${feels}℃`;
-  el.primaryTitle.textContent = outfit.title;
-  el.primaryCopy.textContent = outfit.copy;
-  renderOutfitList(outfit.items);
-  el.rainTitle.textContent = outfit.rainTitle;
-  el.rainCopy.textContent = outfit.rainCopy;
-  el.extraTitle.textContent = outfit.extraTitle;
-  el.extraCopy.textContent = outfit.extraCopy;
-  el.updated.textContent = `更新: ${formatTime(now)} · ${data.source || "Open-Meteo"}予報`;
-
-  el.sky.dataset.weather = getSkyType(current.weather_code ?? daily.code, current.is_day);
-
-  renderTimeline(hours, daily, preferences[preference].offset, dayParts);
-  setupShare({ condition, temp, outfit });
-}
-
-function normalizeDaily(daily = fallback.daily) {
-  return {
-    date: daily.time?.[0],
-    code: daily.weather_code?.[0],
-    max: daily.temperature_2m_max?.[0],
-    min: daily.temperature_2m_min?.[0],
-    apparentMax: daily.apparent_temperature_max?.[0],
-    apparentMin: daily.apparent_temperature_min?.[0],
-    rainProbability: daily.precipitation_probability_max?.[0] ?? 0,
-    rainSum: daily.precipitation_sum?.[0] ?? 0,
-    wind: daily.wind_speed_10m_max?.[0] ?? 0
-  };
-}
-
-function normalizeHours(hourly = fallback.hourly) {
-  return (hourly.time || []).map((time, index) => ({
-    time,
-    hour: new Date(time).getHours(),
-    temp: hourly.temperature_2m?.[index],
-    apparent: hourly.apparent_temperature?.[index],
-    rainProbability: hourly.precipitation_probability?.[index] ?? 0,
-    precipitation: hourly.precipitation?.[index] ?? 0,
-    code: hourly.weather_code?.[index],
-    wind: hourly.wind_speed_10m?.[index] ?? 0
-  }));
-}
-
-function getOutfit({ temp, max, min, rainProbability, rainSum, wind, code }) {
-  const rainy = rainProbability >= 50 || rainSum >= 1 || [51, 53, 55, 61, 63, 65, 80, 81, 82, 95, 96, 99].includes(code);
-  const maybeRain = !rainy && rainProbability >= 30;
-  const gap = Math.abs((max ?? temp) - (min ?? temp));
-  const windy = wind >= 24;
-  const outfitTemp = windy ? temp - 2 : temp;
-
-  let title = "長袖を基本にした服装";
-  let copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。長袖シャツやロンTを基本に、外にいる時間が長ければ薄手の羽織りを合わせると過ごしやすいです。`;
-  let items = ["長袖シャツ", "ロンT", "半袖 + 薄手アウター"];
-
-  if (outfitTemp >= 28) {
-    title = "半袖1枚で涼しく";
-    copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。日中は暑さを感じやすいため、半袖1枚や通気性の良い服装が向いています。`;
-    items = ["半袖Tシャツ + 薄手パンツ", "半袖シャツ + 軽いボトム", "ノースリーブ + 薄手シャツ"];
-  } else if (outfitTemp >= 24) {
-    title = "半袖 + 必要なら薄手の羽織り";
-    copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。日中は半袖で快適に過ごせます。朝晩や冷房が気になる場合は、薄手の羽織りがあると安心です。`;
-    items = ["半袖Tシャツ", "半袖 + 薄手カーディガン", "半袖シャツ + 薄手パンツ"];
-  } else if (outfitTemp >= 20) {
-    title = "長袖シャツやロンT";
-    copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。日中は過ごしやすく、長袖シャツやロンTがちょうどよい気温です。暑がりの方は半袖に薄手アウターでも調整しやすいです。`;
-    items = ["長袖シャツ", "ロンT", "半袖 + 薄手アウター"];
-  } else if (outfitTemp >= 16) {
-    title = "長袖 + ライトアウター";
-    copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。少し涼しさを感じるため、長袖に軽めのアウターを合わせるとちょうどよい一日です。`;
-    items = ["長袖 + ライトアウター", "薄手ニット", "ロンT + ジャケット"];
-  } else if (outfitTemp >= 12) {
-    title = "ニットやスウェット";
-    copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。肌寒さがあるため、ニットやスウェットを中心に、外出時は軽めのコートを合わせると安心です。`;
-    items = ["ニット + 軽めコート", "スウェット + ライトコート", "長袖インナー + ジャケット"];
-  } else if (outfitTemp >= 8) {
-    title = "コートや防寒アウター";
-    copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。冷え込みを感じやすいので、コートや防寒アウターを着て出かけるのがおすすめです。`;
-    items = ["コート + ニット", "防寒アウター + スウェット", "厚手トップス + 暖かいパンツ"];
-  } else {
-    title = "冬用コートで防寒重視";
-    copy = `今日は最高${round(max)}℃・最低${round(min)}℃です。しっかり寒い一日です。冬用コートに防寒インナーを合わせ、外にいる時間が長い場合は首元や手元も暖かくしてください。`;
-    items = ["冬用コート + 防寒インナー", "ダウン + 厚手ニット", "コート + マフラー"];
-  }
-
-  const gapAdvice = gap >= 8
-    ? "昼は暖かく、朝晩は羽織りがあると安心です。"
-    : "寒暖差は大きすぎないため、基本の服装で過ごしやすい見込みです。";
-
-  const rainTitle = rainy ? "傘と濡れにくい靴" : maybeRain ? "折りたたみ傘" : "雨具は軽めでOK";
-  const rainCopy = rainy
-    ? `雨が降りやすい予報です。傘を持ち、防水性のあるアウターや濡れにくい靴を選ぶと安心です。`
-    : maybeRain
-      ? `にわか雨の可能性があります。小さめの折りたたみ傘をバッグに入れておくと安心です。`
-      : `雨の心配は比較的少なめです。長時間外にいる場合だけ、念のため小さな雨具があると安心です。`;
-
-  const extraTitle = "一言アドバイス";
-  const extraCopy = windy
-    ? `${gapAdvice} 風が強めで体感温度が下がりやすいため、普段より一段階暖かめの服装がおすすめです。`
-    : gap >= 8
-      ? gapAdvice
-      : rainy
-        ? "服装は暖かさだけでなく、濡れにくさも意識すると快適です。靴やバッグの素材も確認しておくと安心です。"
-        : "身軽な服装で過ごしやすい見込みです。外に長くいる場合は、薄手の羽織りを一枚足すと調整しやすいです。";
-
-  return { title, copy, items, rainTitle, rainCopy, extraTitle, extraCopy };
-}
-
-function setupPreference() {
-  updatePreferenceButtons(getPreference());
-  el.preferenceButtons.forEach((button) => {
-    if (button.dataset.bound === "true") return;
-    button.dataset.bound = "true";
-    button.addEventListener("click", () => {
-      const value = button.dataset.preference;
-      if (!preferences[value]) return;
-      localStorage.setItem(PREFERENCE_KEY, value);
-      updatePreferenceButtons(value);
-      if (latestWeatherData) render(latestWeatherData);
+    const params = new URLSearchParams({
+      latitude: TOKYO.latitude, longitude: TOKYO.longitude, timezone: TOKYO.timezone, forecast_days: "2",
+      current: "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day",
+      hourly: "temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code,wind_speed_10m",
+      daily: "weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max"
     });
+    const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, { cache: "no-store" });
+    if (!res.ok) throw new Error("weather request failed");
+    state.data = await res.json();
+    localStorage.setItem("tokyo-weather-cache-v3", JSON.stringify(state.data));
+  } catch {
+    state.data = JSON.parse(localStorage.getItem("tokyo-weather-cache-v3") || "null") || fallback();
+  } finally {
+    els.refresh.disabled = false;
+    render();
+  }
+}
+
+function render() {
+  if (!state.data) return;
+  document.querySelectorAll("[data-day]").forEach((button) => {
+    const active = Number(button.dataset.day) === state.day;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
   });
+  const d = daily(state.day);
+  const hours = hourly(d.date);
+  const noon = hours.find((h) => h.hour === 12) || hours[0] || { temp: d.max, apparent: d.feelMax, code: d.code };
+  const label = state.day === 0 ? "今日" : "明日";
+  const advice = outfitAdvice(d, noon);
+  els.date.textContent = `${label} ${formatDate(d.date)}`;
+  els.condition.textContent = weatherText[d.code] || "天気";
+  els.temp.textContent = round(state.day === 0 ? state.data.current?.temperature_2m ?? noon.temp : noon.temp);
+  els.range.textContent = `${round(d.max)}° / ${round(d.min)}°`;
+  els.rain.textContent = `${round(d.rainProbability)}%・${Number(d.rainSum).toFixed(1)}mm`;
+  els.feel.textContent = `${round(noon.apparent ?? d.feelMax)}°`;
+  els.wind.textContent = `${round(d.wind)}km/h`;
+  els.summary.textContent = `${label}の東京は${weatherText[d.code] || "天気"}、最高${round(d.max)}°・最低${round(d.min)}°の予報です。${d.rainProbability >= 45 ? "雨対策も入れておくと安心です。" : "軽めの雨具で足りそうです。"}`;
+  els.title.textContent = advice.title;
+  els.copy.textContent = advice.copy;
+  els.items.replaceChildren(...advice.items.map((text) => { const li = document.createElement("li"); li.textContent = text; return li; }));
+  els.rainTitle.textContent = advice.rainTitle;
+  els.rainCopy.textContent = advice.rainCopy;
+  els.extraCopy.textContent = advice.extra;
+  els.timeline.replaceChildren(...[8,12,18,21].map((hour) => renderHour(hours, hour, d)));
+  els.updated.textContent = `更新: ${new Intl.DateTimeFormat("ja-JP", { hour:"2-digit", minute:"2-digit" }).format(new Date())}`;
 }
 
-function setupRefresh() {
-  if (!el.refreshButton || el.refreshButton.dataset.bound === "true") return;
-  el.refreshButton.dataset.bound = "true";
-  el.refreshButton.addEventListener("click", refreshWeather);
+function daily(i) {
+  const d = state.data.daily;
+  return { date:d.time[i], code:d.weather_code[i], max:d.temperature_2m_max[i], min:d.temperature_2m_min[i], feelMax:d.apparent_temperature_max[i], feelMin:d.apparent_temperature_min[i], rainProbability:d.precipitation_probability_max[i] ?? 0, rainSum:d.precipitation_sum[i] ?? 0, wind:d.wind_speed_10m_max[i] ?? 0 };
 }
-
-function getPreference() {
-  const saved = localStorage.getItem(PREFERENCE_KEY);
-  return preferences[saved] ? saved : "normal";
+function hourly(date) {
+  const h = state.data.hourly || {};
+  return (h.time || []).map((time, i) => ({ time, hour:new Date(time).getHours(), temp:h.temperature_2m?.[i], apparent:h.apparent_temperature?.[i], rain:h.precipitation_probability?.[i] ?? 0, code:h.weather_code?.[i], wind:h.wind_speed_10m?.[i] ?? 0 })).filter((x) => x.time.startsWith(date));
 }
-
-function updatePreferenceButtons(value) {
-  el.preferenceButtons.forEach((button) => {
-    const active = button.dataset.preference === value;
-    button.setAttribute("aria-checked", String(active));
-    button.classList.toggle("is-active", active);
-  });
+function outfitAdvice(d, noon) {
+  const temp = noon.apparent ?? d.feelMax ?? d.max;
+  const rainy = d.rainProbability >= 45 || d.rainSum >= 1 || rainCodes.has(d.code);
+  const windy = d.wind >= 24;
+  let title, copy, items;
+  if (temp >= 31) { title = "キャミソールやノースリーブで涼しく"; copy = "かなり暑い日。肌離れのよい素材で、キャミソールやショートパンツも取り入れやすいです。"; items = ["キャミソール + リネンシャツ", "ノースリーブ + ワイドパンツ", "ショートパンツ + サンダル"]; }
+  else if (temp >= 27) { title = "半袖とショートパンツも快適"; copy = "夏らしい軽さが合う気温。キャミソール、半袖、ショート丈ボトムを使って涼しくまとめられます。"; items = ["半袖ブラウス", "キャミソール + 薄手シャツ", "ショートパンツ + スニーカー"]; }
+  else if (temp >= 23) { title = "ブラウスやカットソーで軽やかに"; copy = "暖かく過ごしやすい日。フレアスカートやデニムに、軽い羽織りを足すと調整しやすいです。"; items = ["ブラウス + デニム", "カットソー + フレアスカート", "薄手カーディガン"]; }
+  else if (temp >= 18) { title = "長袖トップスに羽織りを"; copy = "少し涼しさもある気温。長袖トップスにカーディガンやライトジャケットが安心です。"; items = ["長袖ブラウス", "カーディガン", "ライトジャケット"]; }
+  else if (temp >= 13) { title = "ニットやスウェットが安心"; copy = "肌寒さを感じやすい日。薄手ニットやスウェットに、トレンチコートを合わせるのがおすすめです。"; items = ["薄手ニット", "スウェット + ロングスカート", "トレンチコート"]; }
+  else { title = "コートでしっかり防寒"; copy = "冷え込みやすい日。厚手ニット、コート、タイツ、ブーツで暖かくしてください。"; items = ["厚手ニット + コート", "タイツ + スカート", "ショートブーツ"]; }
+  return { title, copy, items, rainTitle: rainy ? "濡れにくい足元で" : "雨具は軽めでOK", rainCopy: rainy ? "撥水アウター、折りたたみ傘、濡れても歩きやすい靴が安心です。" : "雨の心配は少なめ。長く外にいる時だけ小さな雨具を。", extra: windy ? "風が強めなので、広がりやすいスカートよりパンツやタイトめのシルエットが快適です。" : "朝晩との差がある日は、脱ぎ着しやすい羽織りを一枚足すと安心です。" };
 }
-
-function renderOutfitList(items) {
-  el.outfitList.replaceChildren(...items.map((item) => {
-    const li = document.createElement("li");
-    li.textContent = item;
-    return li;
-  }));
-}
-
-function renderTimeline(hours, daily, preferenceOffset = 0, dayParts = getDayParts(hours, daily)) {
-  const slots = [
-    { key: "morning", label: "朝", tempEl: el.morningTemp, copyEl: el.morningCopy },
-    { key: "day", label: "昼", tempEl: el.dayTemp, copyEl: el.dayCopy },
-    { key: "night", label: "夜", tempEl: el.nightTemp, copyEl: el.nightCopy }
-  ];
-
-  slots.forEach((slot) => {
-    const part = dayParts[slot.key];
-
-    slot.tempEl.textContent = `${round(part.temp)}℃`;
-    slot.copyEl.textContent = timelineCopy(slot.label, part.temp + preferenceOffset, part.rain, part.code);
-  });
-}
-
-function getDayParts(hours, daily) {
-  return {
-    morning: summarizePart(hours, daily, 6, 10),
-    day: summarizePart(hours, daily, 11, 16),
-    night: summarizePart(hours, daily, 18, 23)
-  };
-}
-
-function summarizePart(hours, daily, start, end) {
-  const slice = hours.filter((hour) => hour.hour >= start && hour.hour <= end);
-  const temps = slice.map((hour) => hour.apparent ?? hour.temp).filter(Number.isFinite);
-  const rains = slice.map((hour) => hour.rainProbability ?? 0);
-  const codes = slice.map((hour) => hour.code).filter(Number.isFinite);
-  const temp = temps.length
-    ? temps.reduce((sum, value) => sum + value, 0) / temps.length
-    : (daily.min + daily.max) / 2;
-
-  return {
-    temp,
-    rain: rains.length ? Math.max(...rains) : daily.rainProbability,
-    code: dominantCode(codes) ?? daily.code
-  };
-}
-
-function dominantCode(codes) {
-  if (!codes.length) return null;
-  const severity = [99, 96, 95, 82, 81, 80, 65, 63, 61, 55, 53, 51, 75, 73, 71, 3, 2, 1, 0];
-  return [...codes].sort((a, b) => severity.indexOf(a) - severity.indexOf(b))[0];
-}
-
-function describeWeatherFlow(hours, dailyCode) {
-  const parts = getDayParts(hours, { ...normalizeDaily(fallback.daily), code: dailyCode, rainProbability: 0 });
-  const labels = [parts.morning.code, parts.day.code, parts.night.code].map(weatherGroup);
-  const compact = labels.filter((label, index) => index === 0 || label !== labels[index - 1]);
-
-  if (compact.length <= 1) return compact[0] || weatherText[dailyCode] || "天気";
-  if (compact.length === 2) return `${compact[0]}のち${compact[1]}`;
-  return `${compact[0]}のち${compact[1]}、夜は${compact[2]}`;
-}
-
-function weatherGroup(code) {
-  if ([95, 96, 99].includes(code)) return "雷雨";
-  if ([51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code)) return "雨";
-  if ([71, 73, 75].includes(code)) return "雪";
-  if ([2, 3, 45, 48].includes(code)) return "曇り";
-  if ([0, 1].includes(code)) return "晴れ";
-  return weatherText[code] || "曇り";
-}
-
-function buildWeatherSummary({ nowTemp, dayTemp, nightTemp, flow, rainProbability, rainSum, gap }) {
-  const rainText = rainProbability >= 50 || rainSum >= 1
-    ? "雨の可能性が高いため、傘を持って出ると安心です。"
-    : rainProbability >= 30
-      ? "にわか雨に備えて、折りたたみ傘があると安心です。"
-      : "雨具は必須ではなさそうです。";
-  const gapText = gap >= 8
-    ? "昼は暖かく、朝晩は羽織りがあると安心です。"
-    : "一日の寒暖差は比較的ゆるやかです。";
-
-  return `今日は今${round(nowTemp)}℃、昼${round(dayTemp)}℃、夜${round(nightTemp)}℃で、天気は${flow}の見込みです。${gapText}${rainText}`;
-}
-
-function timelineCopy(label, temp, rain, code) {
-  const rainy = rain >= 50 || [61, 63, 65, 80, 81, 82, 95, 96, 99].includes(code);
-  const rainNote = rainy ? " + 傘" : "";
-
-  if (temp >= 28) return `${label}は半袖1枚${rainNote}`;
-  if (temp >= 24) return `${label}は半袖 + 薄手の羽織り${rainNote}`;
-  if (temp >= 20) return `${label}は長袖シャツかロンT${rainNote}`;
-  if (temp >= 16) return `${label}は長袖 + ライトアウター${rainNote}`;
-  if (temp >= 12) return `${label}はニットやスウェット${rainNote}`;
-  if (temp >= 8) return `${label}はコートや防寒アウター${rainNote}`;
-  return `${label}は冬用コートで防寒${rainNote}`;
-}
-
-function getSkyType(code, isDay) {
-  if (!isDay) return "night";
-  if ([51, 53, 55, 61, 63, 65, 80, 81, 82, 95, 96, 99].includes(code)) return "rain";
-  if ([2, 3, 45, 48].includes(code)) return "cloud";
-  return "sun";
-}
-
-function setupShare({ condition, temp, outfit }) {
-  if (!el.shareButton) return;
-  el.shareButton.onclick = async () => {
-    const shareData = {
-      title: "東京の天気と服装",
-      text: `東京はいま${condition}、${temp}℃。${outfit.title}がおすすめ。`,
-      url: location.href
-    };
-
-    if (navigator.share) {
-      await navigator.share(shareData).catch(() => {});
-      return;
-    }
-
-    await navigator.clipboard?.writeText(shareData.text).catch(() => {});
-    el.shareButton.setAttribute("aria-label", "服装メモをコピーしました");
-    setTimeout(() => el.shareButton.setAttribute("aria-label", "共有"), 1400);
-  };
-}
-
-function formatDate(date) {
-  return new Intl.DateTimeFormat("ja-JP", {
-    timeZone: TOKYO.timezone,
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "short"
-  }).format(date);
-}
-
-function formatTime(date) {
-  return new Intl.DateTimeFormat("ja-JP", {
-    timeZone: TOKYO.timezone,
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(date);
-}
-
-function round(value) {
-  return Math.round(Number(value) || 0);
-}
+function renderHour(hours, hour, d) { const data = hours.find((h) => h.hour === hour) || { temp:(d.max+d.min)/2, rain:d.rainProbability, code:d.code }; const li = document.createElement("li"); li.innerHTML = `<span>${hour}時</span><strong>${round(data.temp)}°</strong><p>${weatherText[data.code] || "天気"} / ${round(data.rain)}%</p>`; return li; }
+function fallback() { const today = new Date(); const tomorrow = new Date(); tomorrow.setDate(today.getDate()+1); return { current:{ temperature_2m:22, apparent_temperature:22, weather_code:2, wind_speed_10m:8, is_day:1 }, daily:{ time:[iso(today), iso(tomorrow)], weather_code:[2,3], temperature_2m_max:[24,25], temperature_2m_min:[15,16], apparent_temperature_max:[24,25], apparent_temperature_min:[15,16], precipitation_probability_max:[20,30], precipitation_sum:[0,0], wind_speed_10m_max:[10,12] }, hourly:{ time:[], temperature_2m:[], apparent_temperature:[], precipitation_probability:[], weather_code:[], wind_speed_10m:[] } }; }
+function iso(date) { return date.toISOString().slice(0, 10); }
+function formatDate(value) { return new Intl.DateTimeFormat("ja-JP", { month:"long", day:"numeric", weekday:"short" }).format(new Date(value)); }
+function round(value) { return Math.round(Number(value) || 0); }
